@@ -45,8 +45,15 @@ namespace Lucene_Api.Controllers
         [HttpGet("/SearchByIndex/{query}")]
         public IActionResult SearchByIndex(string query)
         {
-            _newsService.SearchByIndex(query);
-            return Ok();
+            var dto = _newsService.SearchByIndex(query);
+            return Ok(dto);
+        }
+
+        [HttpPost("SearchByIndexWithLogic")]
+        public IActionResult SearchByIndexWithLogic(string[] query)
+        {
+            var dto = _newsService.SearchByIndexWithLogic(query);
+            return Ok(dto);
         }
 
         [HttpGet("/SearchBySql/{query}")]

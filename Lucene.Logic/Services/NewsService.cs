@@ -12,9 +12,11 @@ using Lucene.Net.QueryParsers;
 using Lucene.Net.Search;
 using Lucene.Net.Store;
 using Microsoft.VisualBasic;
+using PanGu;
 using System.Reflection.Metadata;
 using System.Xml.Linq;
 using Yamool.CWSharp;
+using static Lucene.Net.Index.IndexWriter;
 using Document = Lucene.Net.Documents.Document;
 
 namespace Lucene.Logic.Services
@@ -25,7 +27,7 @@ namespace Lucene.Logic.Services
         private readonly DirectoryInfo _dir;//文件路徑
 
         //【基本分詞器】
-        //private readonly Analyzer analyzer = new StandardAnalyzer(Lucene.Net.Util.Version.LUCENE_CURRENT)
+        //private readonly Analyzer analyzer = new StandardAnalyzer(Lucene.Net.Util.Version.LUCENE_CURRENT);
 
         //【CWSharp一元分詞】
         //private readonly Analyzer analyzer = new CwsAnalyzer(new UnigramTokenizer());
@@ -37,7 +39,7 @@ namespace Lucene.Logic.Services
         //private readonly Analyzer analyzer = new CwsAnalyzer(new Yamool.CWSharp.StandardTokenizer(new FileStream("cwsharp.dawg", FileMode.Open)));
 
         //【盤古分詞】
-        private readonly Analyzer analyzer = new PanGuAnalyzer();
+        //private readonly Analyzer analyzer = new PanGuAnalyzer();
 
         //【MMSeg Simple】
         //private readonly Analyzer analyzer = new Net.Analysis.MMSeg.SimpleAnalyzer();
@@ -46,7 +48,7 @@ namespace Lucene.Logic.Services
         //private readonly Analyzer analyzer = new Lucene.Net.Analysis.MMSeg.ComplexAnalyzer();
 
         //【MMSeg MaxWord】
-        //private readonly Analyzer analyzer = new MMSegAnalyzer();
+        private readonly Analyzer analyzer = new MMSegAnalyzer();
 
         public NewsService(INewsRepository newsRepository, IndexOption indexOption)
         {
@@ -71,13 +73,20 @@ namespace Lucene.Logic.Services
 
             indexWriter.DeleteAll();
 
-            Document document = new Document();
             foreach (var item in news)
             {
-                document.Add(new Field("Id", item.Id.ToString(), Field.Store.YES, Field.Index.NOT_ANALYZED,Field.TermVector.NO));
-                document.Add(new Field("Title", item.Title ?? string.Empty, Field.Store.NO, Field.Index.ANALYZED));
-                document.Add(new Field("Content", item.Content ?? string.Empty, Field.Store.NO, Field.Index.ANALYZED));
-                document.Add(new Field("Description", item.Description ?? string.Empty, Field.Store.NO, Field.Index.ANALYZED));
+                Document document = new Document();
+                document.Add(new Field("Id", item.Id.ToString(), 
+                    Field.Store.YES, Field.Index.NOT_ANALYZED,Field.TermVector.NO));
+
+                document.Add(new Field("Title", item.Title ?? string.Empty, 
+                    Field.Store.YES, Field.Index.ANALYZED, Field.TermVector.WITH_POSITIONS_OFFSETS));
+
+                document.Add(new Field("Content", item.Content ?? string.Empty, 
+                    Field.Store.YES, Field.Index.NO, Field.TermVector.NO));
+
+                document.Add(new Field("Description", item.Description ?? string.Empty, 
+                    Field.Store.YES, Field.Index.ANALYZED, Field.TermVector.WITH_POSITIONS_OFFSETS));
 
                 document.GetField("Title").Boost = 1.5F;
                 document.GetField("Description").Boost = 0.5F;
@@ -88,6 +97,11 @@ namespace Lucene.Logic.Services
             indexWriter.Optimize();
             indexWriter.Commit();
             indexWriter.Dispose();
+            //通过IndexWriter的Optimize方法优化索引，以加快搜索的速度，该方法提供多个重载，其执行相当耗时，应谨慎使用。优化产生的垃圾文件，在执行Flush / Commit / Close方法后才会被物理删除。Optimize方法及其重载包括：
+            //Optimize() 合并段，完成后返回。
+            //Optimize(bool doWait) 与Optimize()相同，但立即返回。
+            //Optimize(int maxNumSegments) 针对最多maxNumSegments个段进行优化，而并非全部索引。
+            //Optimize(int maxNumSegments, bool doWait) 与Optimize(int maxNumSegments)相同，但立即返回。
         }
 
         public void DeleteById(int id)
@@ -128,9 +142,9 @@ namespace Lucene.Logic.Services
                 {
                     var document = new Document();
                     document.Add(new Field("Id", news.Id.ToString(), Field.Store.NO, Field.Index.ANALYZED));
-                    document.Add(new Field("Title", news.Title, Field.Store.NO, Field.Index.ANALYZED));
-                    document.Add(new Field("Content", news.Content ?? string.Empty, Field.Store.NO, Field.Index.ANALYZED));
-                    document.Add(new Field("Description", news.Description, Field.Store.NO, Field.Index.ANALYZED));
+                    document.Add(new Field("Title", news.Title, Field.Store.YES, Field.Index.ANALYZED));
+                    document.Add(new Field("Content", news.Content ?? string.Empty, Field.Store.YES, Field.Index.ANALYZED));
+                    document.Add(new Field("Description", news.Description, Field.Store.YES, Field.Index.ANALYZED));
 
                     indexWriter.UpdateDocument(new Term("Id", id.ToString()), document);
 
@@ -142,32 +156,99 @@ namespace Lucene.Logic.Services
 
         public List<NewsDto> SearchByIndex(string query, int queryLimit = 20)
         {
+            using (var directory = FSDirectory.Open(_dir))
+            {
 
+                using (var indexSearcher = new IndexSearcher(directory))
+                {
+                    //單Field查詢
+                    var queryParser = new QueryParser(Lucene.Net.Util.Version.LUCENE_CURRENT, "Description", analyzer).Parse(query);
+
+                    //多Field查詢
+                    //var queryParser = new Lucene.Net.QueryParsers.MultiFieldQueryParser(
+                    //    Net.Util.Version.LUCENE_CURRENT
+                    //    , new string[] { "Title", "Content", "Description" },
+                    //    analyzer)
+                    //    .Parse(query);
+
+                    //排序
+                    Sort sort = new();
+                    SortField sortField = new SortField("Id", SortField.STRING, true);//true表示逆向
+                    sort.SetSort(sortField);
+                    //過濾
+                    Filter filter = NumericRangeFilter.NewIntRange("size", 400, 450, true, true);//過濾檔案大小400~450
+
+                    var hits = indexSearcher.Search(queryParser, filter, queryLimit, sort);
+                    if (!hits.ScoreDocs.Any())
+                    {
+                        return new List<NewsDto>();
+                    }
+
+                    Document document ;
+                    var result = new List<NewsDto>();
+                    foreach (var hit in hits.ScoreDocs)
+                    {
+                        document = indexSearcher.Doc(hit.Doc);
+                        NewsDto news = new NewsDto()
+                        {
+                            Id = Convert.ToInt32(document.Get("Id")),
+                            Title = document.Get("Title"),
+                            Content = document.Get("Content"),
+                            Description = document.Get("Description")
+                        };
+                        result.Add(news);
+                    }
+
+                    return result;
+                }
+            }
+        }
+
+        public async Task<List<NewsDto>> SearchByIndexWithLogic(string[] queryArr, int queryLimit = 20)
+        {
+            //製造邏輯查詢
+            BooleanQuery bq = new BooleanQuery();
+            for (int i = 0; i < queryArr.Length; i++)
+            {
+                Term term = new Term("Title", queryArr[i]);
+                TermQuery tq = new TermQuery(term);
+                if (i == 0)
+                {
+                    bq.Add(tq, Occur.MUST);
+                }
+                else
+                {
+                    bq.Add(tq, Occur.MUST_NOT);
+                }
+                //must:and , should:or
+            }
 
             using (var directory = FSDirectory.Open(_dir))
             {
 
                 using (var indexSearcher = new IndexSearcher(directory))
                 {
-                    var parser = new Lucene.Net.QueryParsers.MultiFieldQueryParser(
-                        Net.Util.Version.LUCENE_CURRENT
-                        , new string[] { "Ttile", "Content", "Description"}, 
-                        analyzer)
-                        .Parse(query);
 
-                    var hits = indexSearcher.Search(parser, queryLimit);
+                    var hits = indexSearcher.Search(bq, queryLimit);
                     if (!hits.ScoreDocs.Any())
                     {
                         return new List<NewsDto>();
                     }
 
-                    var result = hits.ScoreDocs.Select(s => new NewsDto
+                    Document document;
+                    var result = new List<NewsDto>();
+                    foreach (var hit in hits.ScoreDocs)
                     {
-                        Id = Convert.ToInt32(indexSearcher.Doc(s.Doc).Get("Id")),
-                        Title = indexSearcher.Doc(s.Doc).Get("Title"),
-                        Content = indexSearcher.Doc(s.Doc).Get("Content"),
-                        Description = indexSearcher.Doc(s.Doc).Get("Description")
-                    }).ToList();
+                        document = indexSearcher.Doc(hit.Doc);
+                        NewsDto news = new NewsDto()
+                        {
+                            Id = Convert.ToInt32(document.Get("Id")),
+                            Title = document.Get("Title"),
+                            Content = document.Get("Content"),
+                            Description = document.Get("Description")
+                        };
+                        result.Add(news);
+                    }
 
                     return result;
                 }
