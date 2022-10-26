@@ -39,7 +39,7 @@ namespace Lucene.Logic.Services
         //private readonly Analyzer analyzer = new CwsAnalyzer(new Yamool.CWSharp.StandardTokenizer(new FileStream("cwsharp.dawg", FileMode.Open)));
 
         //【盤古分詞】
-        //private readonly Analyzer analyzer = new PanGuAnalyzer();
+        private readonly Analyzer analyzer = new PanGuAnalyzer();
 
         //【MMSeg Simple】
         //private readonly Analyzer analyzer = new Net.Analysis.MMSeg.SimpleAnalyzer();
@@ -48,7 +48,7 @@ namespace Lucene.Logic.Services
         //private readonly Analyzer analyzer = new Lucene.Net.Analysis.MMSeg.ComplexAnalyzer();
 
         //【MMSeg MaxWord】
-        private readonly Analyzer analyzer = new MMSegAnalyzer();
+        //private readonly Analyzer analyzer = new MMSegAnalyzer();
 
         public NewsService(INewsRepository newsRepository, IndexOption indexOption)
         {
@@ -59,7 +59,7 @@ namespace Lucene.Logic.Services
         public async void Create()
         {
             //取得所有文章
-            var news = await _newsRepository.GetAll();
+            var news = _newsRepository.GetAll();
 
             // 取得或建立Lucene文件資料夾
             if (!File.Exists(_dir.FullName))
@@ -83,7 +83,7 @@ namespace Lucene.Logic.Services
                     Field.Store.YES, Field.Index.ANALYZED, Field.TermVector.WITH_POSITIONS_OFFSETS));
 
                 document.Add(new Field("Content", item.Content ?? string.Empty, 
-                    Field.Store.YES, Field.Index.NO, Field.TermVector.NO));
+                    Field.Store.YES, Field.Index.ANALYZED, Field.TermVector.NO));
 
                 document.Add(new Field("Description", item.Description ?? string.Empty, 
                     Field.Store.YES, Field.Index.ANALYZED, Field.TermVector.WITH_POSITIONS_OFFSETS));
@@ -154,7 +154,7 @@ namespace Lucene.Logic.Services
             }
         }
 
-        public List<NewsDto> SearchByIndex(string query, int queryLimit = 20)
+        public List<NewsDto> SearchByIndex(string query, int queryLimit = 100)
         {
             using (var directory = FSDirectory.Open(_dir))
             {
@@ -162,23 +162,25 @@ namespace Lucene.Logic.Services
                 using (var indexSearcher = new IndexSearcher(directory))
                 {
                     //單Field查詢
-                    var queryParser = new QueryParser(Lucene.Net.Util.Version.LUCENE_CURRENT, "Description", analyzer).Parse(query);
+                    //var queryParser = new QueryParser(Lucene.Net.Util.Version.LUCENE_CURRENT, "Description", analyzer).Parse(query);
 
                     //多Field查詢
-                    //var queryParser = new Lucene.Net.QueryParsers.MultiFieldQueryParser(
-                    //    Net.Util.Version.LUCENE_CURRENT
-                    //    , new string[] { "Title", "Content", "Description" },
-                    //    analyzer)
-                    //    .Parse(query);
+                    var queryParser = new Lucene.Net.QueryParsers.MultiFieldQueryParser(
+                        Net.Util.Version.LUCENE_CURRENT
+                        , new string[] { "Title", "Content", "Description" },
+                        analyzer)
+                        .Parse(query);
+                    var hits = indexSearcher.Search(queryParser, queryLimit);
+
 
                     //排序
-                    Sort sort = new();
-                    SortField sortField = new SortField("Id", SortField.STRING, true);//true表示逆向
-                    sort.SetSort(sortField);
+                    //Sort sort = new();
+                    //SortField sortField = new SortField("Id", SortField.STRING, true);//true表示逆向
+                    //sort.SetSort(sortField);
                     //過濾
-                    Filter filter = NumericRangeFilter.NewIntRange("size", 400, 450, true, true);//過濾檔案大小400~450
+                    //Filter filter = NumericRangeFilter.NewIntRange("size", 400, 450, true, true);//過濾檔案大小400~450
 
-                    var hits = indexSearcher.Search(queryParser, filter, queryLimit, sort);
+                    //var hits = indexSearcher.Search(queryParser, filter, queryLimit, sort);
                     if (!hits.ScoreDocs.Any())
                     {
                         return new List<NewsDto>();
@@ -204,7 +206,7 @@ namespace Lucene.Logic.Services
             }
         }
 
-        public async Task<List<NewsDto>> SearchByIndexWithLogic(string[] queryArr, int queryLimit = 20)
+        public List<NewsDto> SearchByIndexWithLogic(string[] queryArr, int queryLimit = 20)
         {
             //製造邏輯查詢
             BooleanQuery bq = new BooleanQuery();
@@ -255,9 +257,9 @@ namespace Lucene.Logic.Services
             }
         }
 
-        public async Task<List<NewsDto>> SearchBySql(GetNewsQuery query)
+        public List<NewsDto> SearchBySql(GetNewsQuery query)
         {
-            return await _newsRepository.Get(query);
+            return _newsRepository.Get(query);
         }
     }
 }

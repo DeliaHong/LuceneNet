@@ -1,6 +1,8 @@
 using Lucene.Logic.query;
 using Lucene.Logic.Services;
+using Lucene_Api.ViewModels;
 using Microsoft.AspNetCore.Mvc;
+using System.Diagnostics;
 
 namespace Lucene_Api.Controllers
 {
@@ -17,8 +19,11 @@ namespace Lucene_Api.Controllers
         [HttpGet("Create")]
         public IActionResult CreateIndex()
         {
+            Stopwatch stopWatch = new Stopwatch();
+            stopWatch.Start();
             _newsService.Create();
-            return Ok();
+            stopWatch.Stop();
+            return Ok($"產生索引檔共花費【{stopWatch.ElapsedMilliseconds}】毫秒");
         }
 
         [HttpGet("Delete")]
@@ -45,22 +50,49 @@ namespace Lucene_Api.Controllers
         [HttpGet("/SearchByIndex/{query}")]
         public IActionResult SearchByIndex(string query)
         {
+            Stopwatch stopWatch = new Stopwatch();
+            stopWatch.Start();
             var dto = _newsService.SearchByIndex(query);
-            return Ok(dto);
+            stopWatch.Stop();
+
+            return Ok(new SearchNewsViewModel
+            {
+                Count = dto.Count,
+                newsDtos = dto,
+                SearchTime = stopWatch.ElapsedMilliseconds
+            });
         }
 
         [HttpPost("SearchByIndexWithLogic")]
         public IActionResult SearchByIndexWithLogic(string[] query)
         {
+            Stopwatch stopWatch = new Stopwatch();
+            stopWatch.Start();
             var dto = _newsService.SearchByIndexWithLogic(query);
-            return Ok(dto);
+            stopWatch.Stop();
+            
+            return Ok(new SearchNewsViewModel 
+            { 
+                Count = dto.Count,
+                newsDtos = dto,
+                SearchTime = stopWatch.ElapsedMilliseconds
+            });
         }
 
         [HttpGet("/SearchBySql/{query}")]
-        public async Task<IActionResult> SearchBySql(string query)
+        public IActionResult SearchBySql(string query)
         {
-            await _newsService.SearchBySql(new GetNewsQuery { Title = query , Description = query , Content = query });
-            return Ok();
+            Stopwatch stopWatch = new Stopwatch();
+            stopWatch.Start();
+            var dto = _newsService.SearchBySql(new GetNewsQuery { Title = query , Description = query , Content = query });
+            stopWatch.Stop();
+
+            return Ok(new SearchNewsViewModel
+            {
+                Count = dto.Count,
+                newsDtos = dto,
+                SearchTime = stopWatch.ElapsedMilliseconds
+            });
         }
     }
 }

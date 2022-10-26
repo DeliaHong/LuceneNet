@@ -5,8 +5,8 @@ namespace Lucene.Logic.Interfaces
 {
     public interface INewsRepository
     {
-        Task<List<NewsDto>> GetAll();
+        List<NewsDto> GetAll();
         NewsDto Get(int id);
-        Task<List<NewsDto>> Get(GetNewsQuery query);
+        List<NewsDto> Get(GetNewsQuery query);
     }
 }

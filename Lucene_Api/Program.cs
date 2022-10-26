@@ -25,7 +25,7 @@ builder.Services.AddSingleton(p =>
 });
 
 builder.Services.AddScoped<NewsService>();
-builder.Services.AddScoped<INewsRepository, MockNewsRepository>();
+builder.Services.AddScoped<INewsRepository, NewsRepository>();
 
 var app = builder.Build();
 

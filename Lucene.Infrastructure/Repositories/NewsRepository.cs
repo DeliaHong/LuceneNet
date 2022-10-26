@@ -15,12 +15,12 @@ namespace Lucene.Infrastructure.Repositories
         {
             _context = context;
         }
-        public async Task<List<NewsDto>> GetAll()
+        public List<NewsDto> GetAll()
         {
             using (var connection = _context.CreateConnection())
             {
 
-                var news = await connection.QueryAsync<News>("SELECT * FROM News");
+                var news = connection.Query<News>("SELECT * FROM News");
                 var dto = news.Select(s => new NewsDto
                 {
                     Id = s.Id,
@@ -33,7 +33,7 @@ namespace Lucene.Infrastructure.Repositories
             }
         }
 
-        public async Task<List<NewsDto>> Get(GetNewsQuery query)
+        public List<NewsDto> Get(GetNewsQuery query)
         {
             string queryString = "SELECT * FROM News WHERE Title LIKE @Title OR Content LIKE @Content OR Description LIKE @Description";
             var dynamicParams = new DynamicParameters();
@@ -43,7 +43,7 @@ namespace Lucene.Infrastructure.Repositories
 
             using (var connection = _context.CreateConnection())
             {
-                var news = await connection.QueryAsync<News>(queryString, dynamicParams);
+                var news = connection.Query<News>(queryString, dynamicParams);
                 var dto = news.Select(s => new NewsDto
                 {
                     Id = s.Id,
